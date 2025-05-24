@@ -1,6 +1,5 @@
 import requests
 import re
-import json
 
 COOKIE_STRING = (
     "browserid=9CqZBM8040sdNs9pEGB_ihahaWeSMIcwt-WjMWgFPGNfFni6ktnp_UwUaGE=; lang=en; "
@@ -21,8 +20,8 @@ HEADERS = {
 
 
 def extract_ids(html):
-    share_id = re.search(r'"shareid":"(.*?)"', html)
-    uk = re.search(r'"uk":"(.*?)"', html)
+    share_id = re.search(r'"shareid"\s*:\s*"(\w+)"', html)
+    uk = re.search(r'"uk"\s*:\s*"(\d+)"', html)
 
     if share_id and uk:
         return share_id.group(1), uk.group(1)
@@ -56,39 +55,41 @@ def get_download_link(fs_id, shareid, uk):
 
     res = requests.post(post_url, headers=HEADERS, params=params, data=data)
     try:
-        dlink = res.json()["list"][0]["dlink"]
-        return dlink
-    except:
+        return res.json()["list"][0]["dlink"]
+    except Exception as e:
+        print(f"[!] Error parsing download link: {e}")
         return None
 
 
 if __name__ == "__main__":
     link = input("🔗 Enter Terabox video/file link: ").strip()
     print("[*] Fetching page...")
-    page = requests.get(link, headers=HEADERS)
-    if page.status_code != 200:
-        print("❌ Failed to load page.")
-        exit()
-
-    shareid, uk = extract_ids(page.text)
-    if not shareid or not uk:
-        print("❌ Failed to extract shareid and uk.")
-        exit()
-
-    print("[*] Getting file info...")
-    info = get_file_info(shareid, uk)
     try:
-        file_data = info["list"][0]
-        file_name = file_data["server_filename"]
-        fs_id = file_data["fs_id"]
-    except:
-        print("❌ Could not extract file info.")
-        exit()
+        page = requests.get(link, headers=HEADERS, allow_redirects=True)
+        final_url = page.url
+        real_page = requests.get(final_url, headers=HEADERS)
 
-    print(f"📁 File: {file_name}")
-    print("[*] Getting direct download link...")
-    dlink = get_download_link(fs_id, shareid, uk)
-    if dlink:
-        print("✅ Direct Link:\n", dlink)
-    else:
-        print("❌ Failed to get direct download link.")
+        shareid, uk = extract_ids(real_page.text)
+        if not shareid or not uk:
+            print("❌ Failed to extract shareid and uk.")
+            exit()
+
+        print("[*] Getting file info...")
+        info = get_file_info(shareid, uk)
+        try:
+            file_data = info["list"][0]
+            file_name = file_data["server_filename"]
+            fs_id = file_data["fs_id"]
+        except:
+            print("❌ Could not extract file info.")
+            exit()
+
+        print(f"📁 File: {file_name}")
+        print("[*] Getting direct download link...")
+        dlink = get_download_link(fs_id, shareid, uk)
+        if dlink:
+            print("✅ Direct Link:\n", dlink)
+        else:
+            print("❌ Failed to get direct download link.")
+    except Exception as e:
+        print(f"❌ Error: {e}")
