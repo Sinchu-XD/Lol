@@ -65,7 +65,12 @@ async def main():
         page = await context.new_page()
 
         print("[*] Loading page in browser...")
-        await page.goto(link, wait_until='networkidle')
+        try:
+            await page.goto(link, wait_until='load', timeout=60000)  # 60 sec timeout
+        except Exception as e:
+            print(f"❌ Failed to load page: {e}")
+            await browser.close()
+            return
 
         html = await page.content()
         await browser.close()
