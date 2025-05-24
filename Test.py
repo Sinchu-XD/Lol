@@ -10,8 +10,10 @@ def get_download_url(surl):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
         "Accept": "application/json",
-}
+    }
     resp = requests.get(api_url, headers=headers)
+    print(f"Raw API response status: {resp.status_code}")
+    print(f"Raw API response text: {resp.text[:500]}")  # print first 500 chars
     resp.raise_for_status()
     data = resp.json()
     file_info = data.get("file_info") or data.get("data") or {}
@@ -19,6 +21,7 @@ def get_download_url(surl):
     if file_info:
         download_url = file_info.get("download_url") or file_info.get("download_url_preview")
     return download_url
+
 
 def download_file(url, filename):
     print(f"[*] Downloading file from: {url}")
