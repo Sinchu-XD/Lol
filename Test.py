@@ -1,8 +1,33 @@
 import asyncio
 from playwright.async_api import async_playwright
 import re
+import requests
 
 TERABOX_LINK = "https://teraboxlink.com/s/1_gOh4YzXqinDw1hu8IAHVg"
+
+def get_download_url(surl):
+    api_url = f"https://www.1024tera.com/api/shared_files/{surl}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    }
+    resp = requests.get(api_url, headers=headers)
+    resp.raise_for_status()
+    data = resp.json()
+    file_info = data.get("file_info") or data.get("data") or {}
+    download_url = None
+    if file_info:
+        download_url = file_info.get("download_url") or file_info.get("download_url_preview")
+    return download_url
+
+def download_file(url, filename):
+    print(f"[*] Downloading file from: {url}")
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        with open(filename, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+    print(f"[+] Download completed and saved as: {filename}")
 
 async def main():
     link = TERABOX_LINK
@@ -26,36 +51,38 @@ async def main():
             print("[*] Waiting 10 seconds for dynamic content to load...")
             await asyncio.sleep(10)
 
-            # Get full page content (for debug)
-            content = await page.content()
-
-            # Extract surl from OG meta tag
             try:
                 og_url = await page.eval_on_selector(
                     "meta[property='og:url']", "el => el.content"
                 )
                 print(f"[+] Extracted og:url content: {og_url}")
 
-                # Extract surl param from URL
                 match = re.search(r"surl=([^&]+)", og_url)
                 surl = match.group(1) if match else None
                 print(f"[+] Extracted surl: {surl}")
 
             except Exception as e:
                 print(f"❌ Could not extract surl: {e}")
+                await browser.close()
+                return
 
-            # Extract filename from title tag
             try:
                 title = await page.title()
                 print(f"[+] Page title: {title}")
-                # Attempt to extract filename from title, example: "telegram @getnewlink J2VFNS.mp4 - Share Files Online"
                 filename_match = re.search(r"telegram.*?(\S+\.\w+)", title)
-                filename = filename_match.group(1) if filename_match else None
+                filename = filename_match.group(1) if filename_match else "file.mp4"
                 print(f"[+] Extracted filename: {filename}")
             except Exception as e:
                 print(f"❌ Could not extract filename: {e}")
+                filename = "file.mp4"
 
             await browser.close()
+
+            download_url = get_download_url(surl)
+            if download_url:
+                download_file(download_url, filename)
+            else:
+                print("❌ Could not get the direct download URL from API.")
 
     except Exception as e:
         print(f"❌ Browser launch failed: {e}")
