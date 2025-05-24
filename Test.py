@@ -9,7 +9,8 @@ def get_download_url(surl):
     api_url = f"https://www.1024tera.com/api/shared_files/{surl}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    }
+        "Accept": "application/json",
+}
     resp = requests.get(api_url, headers=headers)
     resp.raise_for_status()
     data = resp.json()
