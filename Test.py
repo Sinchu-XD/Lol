@@ -12,12 +12,25 @@ async def main():
         context = await browser.new_context()
         page = await context.new_page()
 
-        print("[*] Loading page in browser...")
-        await page.goto(TERABOX_LINK, wait_until='domcontentloaded', timeout=60000)
+        download_url = None
 
-        print("[*] Waiting 10 seconds for dynamic content to load...")
+        # Intercept all requests and look for media/download URLs
+        async def handle_request(request):
+            url = request.url
+            if any(x in url for x in [".mp4", ".m3u8", "download", "file"]):
+                nonlocal download_url
+                download_url = url
+                print(f"[✅] Found potential media URL: {download_url}")
+
+        page.on("request", handle_request)
+
+        print("[*] Loading page in browser...")
+        await page.goto(TERABOX_LINK, wait_until='networkidle', timeout=60000)
+
+        print("[*] Waiting 10 seconds for network requests to complete...")
         await asyncio.sleep(10)
 
+        # Get metadata
         og_url = await page.eval_on_selector("meta[property='og:url']", "el => el.content")
         print(f"[+] Extracted og:url content: {og_url}")
 
@@ -31,22 +44,10 @@ async def main():
         filename = filename_match.group(1) if filename_match else None
         print(f"[+] Extracted filename: {filename}")
 
-        # Wait for download button or scan for direct link
-        print("[*] Looking for download link on page...")
-        download_button = await page.query_selector("a[href*='/download']")
-        if download_button:
-            download_url = await download_button.get_attribute("href")
-            print(f"[✅] Found download URL: {download_url}")
+        if download_url:
+            print(f"[🎉] Final download link: {download_url}")
         else:
-            print("❌ No direct download button found. Trying fallback...")
-
-            # Fallback: try to scan all links and find possible .mp4 file
-            links = await page.eval_on_selector_all("a", "els => els.map(e => e.href)")
-            mp4_links = [l for l in links if l.endswith(".mp4")]
-            if mp4_links:
-                print(f"[✅] Found possible MP4 link: {mp4_links[0]}")
-            else:
-                print("❌ Could not find a download URL.")
+            print("❌ Could not capture any download URL from network.")
 
         await browser.close()
 
