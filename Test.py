@@ -35,7 +35,7 @@ async def main():
     cookies = parse_cookies(COOKIE_STRING)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)  # Show browser window for debugging
+        browser = await p.chromium.launch(headless=True)  # Show browser window for debugging
         context = await browser.new_context()
 
         # Add cookies to context
