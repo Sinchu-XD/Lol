@@ -62,7 +62,7 @@ async def main():
             try:
                 await page.goto(link, wait_until='domcontentloaded', timeout=120000)
                 print("[*] Waiting for 'og:url' meta tag to appear...")
-                await page.wait_for_selector("meta[property='og:url']", timeout=60000)
+                await page.wait_for_selector("meta[property='og:url']", timeout=60000, state="attached")
 
                 print("[*] Waiting 10 seconds for dynamic content to load...")
                 await asyncio.sleep(10)
