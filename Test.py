@@ -1,5 +1,7 @@
-import requests
+import asyncio
+from playwright.async_api import async_playwright
 import re
+import requests
 
 COOKIE_STRING = (
     "browserid=9CqZBM8040sdNs9pEGB_ihahaWeSMIcwt-WjMWgFPGNfFni6ktnp_UwUaGE=; lang=en; "
@@ -14,26 +16,20 @@ COOKIE_STRING = (
 
 HEADERS = {
     "Cookie": COOKIE_STRING,
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 }
 
 
 def extract_ids(html):
     share_id = re.search(r'"shareid"\s*:\s*"(\w+)"', html)
     uk = re.search(r'"uk"\s*:\s*"(\d+)"', html)
-
-    if share_id and uk:
-        return share_id.group(1), uk.group(1)
-    return None, None
+    return (share_id.group(1), uk.group(1)) if share_id and uk else (None, None)
 
 
 def get_file_info(shareid, uk):
     api_url = f"https://www.terabox.com/share/list?app_id=250528&channel=0&web=1&shareid={shareid}&uk={uk}&clienttype=0"
     res = requests.get(api_url, headers=HEADERS)
-    if res.status_code == 200:
-        return res.json()
-    return None
+    return res.json() if res.status_code == 200 else None
 
 
 def get_download_link(fs_id, shareid, uk):
@@ -44,7 +40,6 @@ def get_download_link(fs_id, shareid, uk):
         "web": "1",
         "clienttype": "0",
     }
-
     data = {
         "encrypt": 0,
         "product": "share",
@@ -52,7 +47,6 @@ def get_download_link(fs_id, shareid, uk):
         "primaryid": shareid,
         "fid_list": f"[{fs_id}]",
     }
-
     res = requests.post(post_url, headers=HEADERS, params=params, data=data)
     try:
         return res.json()["list"][0]["dlink"]
@@ -61,35 +55,47 @@ def get_download_link(fs_id, shareid, uk):
         return None
 
 
-if __name__ == "__main__":
+async def main():
     link = input("🔗 Enter Terabox video/file link: ").strip()
-    print("[*] Fetching page...")
+
+    print("[*] Launching headless browser...")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(extra_http_headers=HEADERS)
+        page = await context.new_page()
+
+        print("[*] Loading page in browser...")
+        await page.goto(link, wait_until='networkidle')
+
+        html = await page.content()
+        await browser.close()
+
+    print("[*] Extracting IDs...")
+    shareid, uk = extract_ids(html)
+    if not shareid or not uk:
+        print("❌ Could not extract shareid and uk.")
+        return
+
+    print(f"✅ shareid: {shareid}, uk: {uk}")
+    print("[*] Getting file info...")
+    info = get_file_info(shareid, uk)
+
     try:
-        page = requests.get(link, headers=HEADERS, allow_redirects=True)
-        final_url = page.url
-        real_page = requests.get(final_url, headers=HEADERS)
-
-        shareid, uk = extract_ids(real_page.text)
-        if not shareid or not uk:
-            print("❌ Failed to extract shareid and uk.")
-            exit()
-
-        print("[*] Getting file info...")
-        info = get_file_info(shareid, uk)
-        try:
-            file_data = info["list"][0]
-            file_name = file_data["server_filename"]
-            fs_id = file_data["fs_id"]
-        except:
-            print("❌ Could not extract file info.")
-            exit()
-
+        file_data = info["list"][0]
+        file_name = file_data["server_filename"]
+        fs_id = file_data["fs_id"]
         print(f"📁 File: {file_name}")
-        print("[*] Getting direct download link...")
-        dlink = get_download_link(fs_id, shareid, uk)
-        if dlink:
-            print("✅ Direct Link:\n", dlink)
-        else:
-            print("❌ Failed to get direct download link.")
-    except Exception as e:
-        print(f"❌ Error: {e}")
+    except:
+        print("❌ Failed to parse file info.")
+        return
+
+    print("[*] Fetching direct download link...")
+    dlink = get_download_link(fs_id, shareid, uk)
+    if dlink:
+        print("✅ Download Link:\n", dlink)
+    else:
+        print("❌ Could not get direct download link.")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
