@@ -4,7 +4,7 @@ import re
 
 TERABOX_LINK = "https://teraboxlink.com/s/1_gOh4YzXqinDw1hu8IAHVg"
 
-# Your cookie string (semicolon-separated)
+# Your cookies as a string (make sure it is valid and up-to-date)
 COOKIE_STRING = (
     "browserid=9CqZBM8040sdNs9pEGB_ihahaWeSMIcwt-WjMWgFPGNfFni6ktnp_UwUaGE=; lang=en; "
     "_bid_n=19703d60f3cf7354014207; _ga=GA1.1.311551041.1748116052; "
@@ -16,56 +16,60 @@ COOKIE_STRING = (
     "ndut_fmt=AE8EE8F0D41FCA50A1B7DC06A05435ABDF8A520472BA70029D01CD7588AC40F4"
 )
 
-def parse_cookies(cookie_string, url):
+def parse_cookies(cookie_string, domain):
     cookies = []
-    for cookie in cookie_string.split(";"):
-        cookie = cookie.strip()
-        if not cookie:
-            continue
-        if "=" not in cookie:
-            continue
-        name, value = cookie.split("=", 1)
-        cookies.append({
-            "name": name,
-            "value": value,
-            "domain": "." + url.split("//")[1].split("/")[0],  # e.g. .teraboxlink.com
-            "path": "/",
-            "httpOnly": False,
-            "secure": True,
-            "sameSite": "Lax",
-        })
+    for pair in cookie_string.split(";"):
+        if "=" in pair:
+            name, value = pair.strip().split("=", 1)
+            cookies.append({
+                "name": name,
+                "value": value,
+                "domain": domain,
+                "path": "/",
+                "httpOnly": False,
+                "secure": True,
+                "sameSite": "Lax"
+            })
     return cookies
 
 async def main():
-    print(f"🔗 Loading Terabox link: {TERABOX_LINK}")
+    link = TERABOX_LINK
+    print(f"🔗 Loading Terabox link: {link}")
 
     print("[*] Launching browser...")
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False, args=["--no-sandbox"])
+            browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
             context = await browser.new_context()
 
-            # Add cookies parsed from COOKIE_STRING
-            cookies = parse_cookies(COOKIE_STRING, TERABOX_LINK)
+            # Add cookies before opening page
+            domain = "teraboxlink.com"
+            cookies = parse_cookies(COOKIE_STRING, domain)
             await context.add_cookies(cookies)
             print(f"[+] Added {len(cookies)} cookies to browser context.")
 
             page = await context.new_page()
 
+            # Set realistic user agent and headers to avoid detection
+            await page.set_extra_http_headers({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                              "AppleWebKit/537.36 (KHTML, like Gecko) "
+                              "Chrome/115.0.0.0 Safari/537.36",
+                "Accept-Language": "en-US,en;q=0.9",
+            })
+
             print("[*] Loading page in browser...")
             try:
-                await page.goto(TERABOX_LINK, wait_until='networkidle', timeout=120000)
+                await page.goto(link, wait_until='domcontentloaded', timeout=120000)
+                print("[*] Waiting for 'og:url' meta tag to appear...")
+                await page.wait_for_selector("meta[property='og:url']", timeout=60000)
+
+                print("[*] Waiting 10 seconds for dynamic content to load...")
+                await asyncio.sleep(10)
             except Exception as e:
-                print(f"❌ Error loading page: {e}")
+                print(f"❌ Error loading page or waiting for selector: {e}")
                 await browser.close()
                 return
-
-            print("[*] Waiting 10 seconds for dynamic content to load...")
-            await asyncio.sleep(10)
-
-            content = await page.content()
-            # Optionally print full page content for debug:
-            # print(content)
 
             # Extract surl from OG meta tag
             try:
@@ -74,15 +78,13 @@ async def main():
                 )
                 print(f"[+] Extracted og:url content: {og_url}")
 
-                # Extract surl param from URL
                 match = re.search(r"surl=([^&]+)", og_url)
                 surl = match.group(1) if match else None
                 print(f"[+] Extracted surl: {surl}")
-
             except Exception as e:
                 print(f"❌ Could not extract surl: {e}")
 
-            # Extract filename from title tag
+            # Extract filename from title
             try:
                 title = await page.title()
                 print(f"[+] Page title: {title}")
