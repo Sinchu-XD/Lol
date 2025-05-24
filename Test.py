@@ -26,8 +26,8 @@ async def main():
             print("[*] Waiting 10 seconds for dynamic content to load...")
             await asyncio.sleep(10)
 
-            # Optional: get full page content for debugging
-            # content = await page.content()
+            # Get full page content (for debug)
+            content = await page.content()
 
             # Extract surl from OG meta tag
             try:
@@ -36,6 +36,7 @@ async def main():
                 )
                 print(f"[+] Extracted og:url content: {og_url}")
 
+                # Extract surl param from URL
                 match = re.search(r"surl=([^&]+)", og_url)
                 surl = match.group(1) if match else None
                 print(f"[+] Extracted surl: {surl}")
@@ -47,7 +48,7 @@ async def main():
             try:
                 title = await page.title()
                 print(f"[+] Page title: {title}")
-
+                # Attempt to extract filename from title, example: "telegram @getnewlink J2VFNS.mp4 - Share Files Online"
                 filename_match = re.search(r"telegram.*?(\S+\.\w+)", title)
                 filename = filename_match.group(1) if filename_match else None
                 print(f"[+] Extracted filename: {filename}")
