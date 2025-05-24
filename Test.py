@@ -1,55 +1,42 @@
 import asyncio
 from playwright.async_api import async_playwright
-import re
 
 TERABOX_LINK = "https://teraboxlink.com/s/1_gOh4YzXqinDw1hu8IAHVg"
 
 async def main():
-    print(f"🔗 Loading Terabox link: {TERABOX_LINK}")
-
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
+        # Launch browser
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
 
-        download_url = None
+        try:
+            # Use 'domcontentloaded' to avoid infinite loading due to 'networkidle'
+            await page.goto(TERABOX_LINK, wait_until="domcontentloaded", timeout=120000)
+            print("[✅] Page loaded successfully!")
 
-        # Intercept all requests and look for media/download URLs
-        async def handle_request(request):
-            url = request.url
-            if any(x in url for x in [".mp4", ".m3u8", "download", "file"]):
-                nonlocal download_url
-                download_url = url
-                print(f"[✅] Found potential media URL: {download_url}")
+            # Wait for download button or any identifiable element (adjust selector based on actual page)
+            await page.wait_for_timeout(5000)  # wait 5 seconds for content to settle
 
-        page.on("request", handle_request)
+            # Example: Extract title of the page
+            title = await page.title()
+            print(f"[📄] Page Title: {title}")
 
-        print("[*] Loading page in browser...")
-        await page.goto(TERABOX_LINK, wait_until='networkidle', timeout=60000)
+            # Example: Extract visible text from the page
+            content = await page.content()
+            if "Download" in content:
+                print("[⬇️] Download option detected on the page!")
 
-        print("[*] Waiting 10 seconds for network requests to complete...")
-        await asyncio.sleep(10)
+            # Example: Get all visible links (customize as needed)
+            links = await page.eval_on_selector_all("a", "elements => elements.map(e => e.href)")
+            for link in links:
+                if "download" in link.lower():
+                    print(f"[🔗] Download Link Found: {link}")
 
-        # Get metadata
-        og_url = await page.eval_on_selector("meta[property='og:url']", "el => el.content")
-        print(f"[+] Extracted og:url content: {og_url}")
+        except Exception as e:
+            print(f"[❌] Failed to load page or extract data: {e}")
 
-        match = re.search(r"surl=([^&]+)", og_url)
-        surl = match.group(1) if match else None
-        print(f"[+] Extracted surl: {surl}")
+        finally:
+            await browser.close()
 
-        title = await page.title()
-        print(f"[+] Page title: {title}")
-        filename_match = re.search(r"telegram.*?(\S+\.\w+)", title)
-        filename = filename_match.group(1) if filename_match else None
-        print(f"[+] Extracted filename: {filename}")
-
-        if download_url:
-            print(f"[🎉] Final download link: {download_url}")
-        else:
-            print("❌ Could not capture any download URL from network.")
-
-        await browser.close()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+asyncio.run(main())
