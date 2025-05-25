@@ -1,64 +1,64 @@
 import asyncio
-from playwright.async_api import async_playwright
 import re
+import httpx
+from playwright.async_api import async_playwright
 
 TERABOX_LINK = "https://teraboxlink.com/s/1_gOh4YzXqinDw1hu8IAHVg"
 
-async def main():
-    link = TERABOX_LINK
-    print(f"🔗 Loading Terabox link: {link}")
+API_DOWNLOAD_INFO = "https://www.terabox.app/api/share/anon/file?shorturl={surl}&root=1"
 
-    print("[*] Launching browser...")
+async def fetch_surl_from_link(link):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
+        context = await browser.new_context()
+        page = await context.new_page()
+        await page.goto(link, wait_until='domcontentloaded', timeout=60000)
+        og_url = await page.eval_on_selector("meta[property='og:url']", "el => el.content")
+        await browser.close()
+        match = re.search(r"surl=([^&]+)", og_url)
+        return match.group(1) if match else None
+
+async def get_file_info(surl):
+    url = API_DOWNLOAD_INFO.format(surl=surl)
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("errno") != 0:
+            raise Exception(f"API error: {data.get('errmsg')}")
+        file_info = data.get("list", [{}])[0]
+        return file_info
+
+async def main(link):
+    print(f"🔗 Processing Terabox link: {link}")
+
+    if "surl=" in link:
+        surl = re.search(r"surl=([^&]+)", link).group(1)
+    else:
+        surl = await fetch_surl_from_link(link)
+
+    if not surl:
+        print("❌ Could not extract surl.")
+        return
+
+    print(f"[+] Extracted surl: {surl}")
+
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
-            context = await browser.new_context()
-            page = await context.new_page()
-
-            print("[*] Loading page in browser...")
-            try:
-                await page.goto(link, wait_until='domcontentloaded', timeout=60000)
-            except Exception as e:
-                print(f"❌ Error loading page: {e}")
-                await browser.close()
-                return
-
-            print("[*] Waiting 10 seconds for dynamic content to load...")
-            await asyncio.sleep(10)
-
-            # Get full page content (for debug)
-            content = await page.content()
-
-            # Extract surl from OG meta tag
-            try:
-                og_url = await page.eval_on_selector(
-                    "meta[property='og:url']", "el => el.content"
-                )
-                print(f"[+] Extracted og:url content: {og_url}")
-
-                # Extract surl param from URL
-                match = re.search(r"surl=([^&]+)", og_url)
-                surl = match.group(1) if match else None
-                print(f"[+] Extracted surl: {surl}")
-
-            except Exception as e:
-                print(f"❌ Could not extract surl: {e}")
-
-            # Extract filename from title tag
-            try:
-                title = await page.title()
-                print(f"[+] Page title: {title}")
-                # Attempt to extract filename from title, example: "telegram @getnewlink J2VFNS.mp4 - Share Files Online"
-                filename_match = re.search(r"telegram.*?(\S+\.\w+)", title)
-                filename = filename_match.group(1) if filename_match else None
-                print(f"[+] Extracted filename: {filename}")
-            except Exception as e:
-                print(f"❌ Could not extract filename: {e}")
-
-            await browser.close()
-
+        info = await get_file_info(surl)
     except Exception as e:
-        print(f"❌ Browser launch failed: {e}")
+        print(f"❌ Failed to fetch file info: {e}")
+        return
+
+    print(f"[+] Filename: {info.get('server_filename')}")
+    print(f"[+] Size: {info.get('size')} bytes")
+    print(f"[+] Upload Time: {info.get('server_ctime')}")
+    print(f"[+] Direct Download URL: {info.get('dlink')}")
+    print(f"[+] Thumbnail URL: {info.get('thumbs', [None])[0]}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import sys
+    if len(sys.argv) < 2:
+        print("Usage: python terabox_cli.py <terabox_share_link_or_surl>")
+        sys.exit(1)
+    link = sys.argv[1]
+    asyncio.run(main(link))
