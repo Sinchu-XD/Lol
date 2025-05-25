@@ -18,39 +18,39 @@ async def get_video_info(terabox_url):
                 context = await browser.new_context()
                 page = await context.new_page()
 
-                print("[*] Loading page...")
-                await page.goto(terabox_url, timeout=30000, wait_until="domcontentloaded")
+                video_url_holder = {"url": None}
 
-                await page.wait_for_timeout(8000)
+                # Intercept .mp4 only
+                def handle_response(resp):
+                    url = resp.url
+                    if ".mp4" in url and "google" not in url and "analytics" not in url:
+                        video_url_holder["url"] = url
+
+                page.on("response", handle_response)
+
+                print("[*] Loading page...")
+                await page.goto(terabox_url, timeout=30000, wait_until="networkidle")
+                await page.wait_for_timeout(10000)
+
                 title = await page.title()
                 print(f"[+] Page title: {title}")
 
-                # Extract all requests and look for .mp4 or video content
-                media_urls = []
+                await browser.close()
 
-                page.on("response", lambda resp: media_urls.append(resp.url) if (
-                    ".mp4" in resp.url or "video" in resp.url
-                ) else None)
-
-                await page.wait_for_timeout(10000)
-
-                if media_urls:
-                    video_url = media_urls[-1]
+                if video_url_holder["url"]:
                     filename = title.split(" - ")[0].strip()
                     if not filename.endswith(".mp4"):
                         filename += ".mp4"
-
-                    await browser.close()
                     return {
                         "title": title,
                         "filename": filename,
-                        "video_url": video_url
+                        "video_url": video_url_holder["url"]
                     }, None
                 else:
-                    await browser.close()
+                    return None, "[❌] No valid .mp4 video found."
+
             except Exception as e:
                 print(f"[❌] Proxy failed: {proxy} — {str(e)}")
                 continue
 
-    return None, "[❌] No valid video URL found from TeraBox link using available proxies."
-  
+    return None, "[❌] All proxies failed or no video found."
