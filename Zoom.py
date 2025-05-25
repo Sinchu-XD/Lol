@@ -1,5 +1,5 @@
 import asyncio
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 
 async def extract_zoom_stream(url: str, passcode: str):
     print("⏳ Extracting video stream links...\n")
@@ -20,61 +20,57 @@ async def extract_zoom_stream(url: str, passcode: str):
             await page.goto(url, timeout=60000)
 
             # Try to find and fill passcode field
-            password_selectors = [
-                "input[type='password']",
-                "input[name='passcode']",
-                "input[aria-label='Passcode']",
-            ]
-
-            filled = False
-            for selector in password_selectors:
-                try:
-                    await page.wait_for_selector(selector, timeout=8000)
-                    await page.fill(selector, passcode)
-                    print(f"[*] Filled passcode in: {selector}")
-                    filled = True
-                    break
-                except Exception:
-                    continue
-
-            if not filled:
-                print("❌ Could not find passcode input field.")
+            passcode_filled = False
+            try:
+                await page.wait_for_selector("input[type='password']", timeout=10000)
+                await page.fill("input[type='password']", passcode)
+                print("[*] Filled passcode in input[type='password']")
+                passcode_filled = True
+            except PlaywrightTimeoutError:
+                print("❌ Passcode field not found.")
                 return ["❌ Failed: Passcode input not found"]
 
-            # Try to click submit button
-            submit_selectors = [
+            await asyncio.sleep(2)  # Wait a bit before submitting
+
+            # Try to click submit or press Enter
+            submitted = False
+            button_selectors = [
                 "button[type='submit']",
-                "button[aria-label='Submit']",
+                "button:has-text('Access recording')",
                 "button:has-text('Submit')",
-                "button:has-text('Unlock')",
-                "button:has-text('Join')",
+                "button:has-text('Watch Recording')"
             ]
 
-            clicked = False
-            for btn_selector in submit_selectors:
+            for selector in button_selectors:
                 try:
-                    await page.wait_for_selector(btn_selector, timeout=15000)
-                    await page.click(btn_selector)
-                    print(f"[*] Clicked submit button: {btn_selector}")
-                    clicked = True
+                    await page.wait_for_selector(selector, timeout=5000)
+                    await page.click(selector)
+                    print(f"[*] Clicked submit button: {selector}")
+                    submitted = True
                     break
                 except Exception:
                     continue
 
-            if not clicked:
+            if not submitted:
+                try:
+                    # Try pressing ENTER in the password input
+                    await page.press("input[type='password']", "Enter")
+                    print("[*] Pressed Enter key as fallback.")
+                    submitted = True
+                except Exception:
+                    pass
+
+            if not submitted:
                 print("❌ Could not find or click submit button.")
                 return ["❌ Failed: Submit button not found"]
 
             print("[*] Submitted passcode. Waiting for video to load...")
-
-            # Wait and reload to ensure video is loaded
-            await page.wait_for_timeout(8000)
+            await asyncio.sleep(8)
             await page.reload()
-            await page.wait_for_timeout(10000)
+            await asyncio.sleep(10)
 
             await browser.close()
 
-            # Filter unique video links
             video_links = list(set(filter(lambda l: ".m3u8" in l or ".mp4" in l, links)))
             return video_links if video_links else ["❌ No video link found. Wrong passcode or expired link."]
     except Exception as e:
