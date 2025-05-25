@@ -46,28 +46,35 @@ async def main(link):
         except Exception as e:
             print(f"❌ Could not extract filename: {e}")
 
-        # Extract direct download link from page
+        # Try multiple selectors to find direct download link
         download_link = None
-        try:
-            # Selector might change - inspect the Terabox page for the actual selector
-            # Here are some guesses based on Terabox structure:
-            # Commonly a button or anchor with download link, or <a data-download-url> attribute
+        selectors_to_try = [
+            "a[data-download-url]",
+            "a[class*='download']",
+            "a.btn-download",
+            "a[aria-label='Download']",
+            "a[href*='download']",
+            "a[href*='terabox']",
+        ]
 
-            # Try anchor with download attribute or class containing 'download'
-            download_link = await page.eval_on_selector(
-                "a[data-download-url]", "el => el.getAttribute('data-download-url')"
-            )
-            if not download_link:
-                # fallback: try href with class or id that looks like download button
-                download_link = await page.eval_on_selector(
-                    "a.download-link, a.btn-download, a[download]", "el => el.href"
-                )
+        for selector in selectors_to_try:
+            try:
+                download_link = await page.eval_on_selector(selector, "el => el.href")
+                if download_link:
+                    print(f"[+] Found download link using selector: {selector}")
+                    break
+            except Exception:
+                pass
+
+        if not download_link:
+            print("❌ Could not find direct download link with known selectors.")
+            # Dump all <a> hrefs for debug
+            links = await page.eval_on_selector_all("a", "els => els.map(el => el.href)")
+            print("All anchor links on page:")
+            for l in links:
+                print(l)
+        else:
             print(f"[+] Direct download link: {download_link}")
-        except Exception as e:
-            print(f"❌ Could not extract direct download link: {e}")
-
-        # Optional: Extract file size or thumbnail from page if available
-        # You can add more selectors here depending on the Terabox page layout
 
         await browser.close()
 
