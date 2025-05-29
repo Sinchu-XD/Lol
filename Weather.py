@@ -1,52 +1,43 @@
 import requests
 
-API_KEY = "6955219eb801cdbfcf12b4d9d185eb78"  # Replace with your valid key
-BASE_URL = "http://api.openweathermap.org/data/2.5/weather"
+API_KEY = "86760c8e26b540b685a92721252905"
+BASE_URL = "http://api.weatherapi.com/v1/current.json"
 
 def get_weather(city):
     params = {
+        "key": API_KEY,
         "q": city,
-        "appid": API_KEY,
-        "units": "metric"
+        "aqi": "no"
     }
 
-    # Print full URL for debug
-    print(f"[DEBUG] Requesting: {BASE_URL}?q={city}&appid={API_KEY}&units=metric")
-
     response = requests.get(BASE_URL, params=params)
-
+    
     if response.status_code == 200:
         data = response.json()
-        return {
-            "City": data["name"],
-            "Country": data["sys"]["country"],
-            "Temperature": f"{data['main']['temp']} °C",
-            "Weather": data["weather"][0]["description"].title(),
-            "Humidity": f"{data['main']['humidity']}%",
-            "Wind Speed": f"{data['wind']['speed']} m/s",
-        }
-    elif response.status_code == 401:
-        return {"Error": "401 Unauthorized. Your API key is invalid or inactive."}
-    elif response.status_code == 404:
-        return {"Error": "404 City not found. Try another city name."}
-    else:
-        return {"Error": f"Error {response.status_code}: {response.text}"}
+        current = data["current"]
+        location = data["location"]
 
-def display_weather(info):
-    if "Error" in info:
-        print(f"\n[❌] {info['Error']}\n")
+        print("\n🌤️ Weather Report for", location["name"], ",", location["country"])
+        print("🕒 Local Time:", location["localtime"])
+        print("🌡️ Temperature:", current["temp_c"], "°C")
+        print("🌡️ Feels Like:", current["feelslike_c"], "°C")
+        print("🌥️ Condition:", current["condition"]["text"])
+        print("💨 Wind:", current["wind_kph"], "kph")
+        print("💧 Humidity:", current["humidity"], "%")
+        print("🔴 UV Index:", current["uv"])
+        print("📡 Cloud Cover:", current["cloud"], "%\n")
+
+    elif response.status_code == 400:
+        print("[❌] City not found or invalid request.")
+    elif response.status_code == 401:
+        print("[❌] Invalid or missing API key.")
     else:
-        print("\n====== 🌦️ Weather Report ======")
-        for key, value in info.items():
-            print(f"{key}: {value}")
-        print("================================\n")
+        print(f"[❌] Error {response.status_code}: {response.text}")
 
 if __name__ == "__main__":
     while True:
         city = input("🔍 Enter city name (or type 'exit' to quit): ").strip()
-        if city.lower() == 'exit':
-            print("👋 Exiting Weather Terminal. Stay safe!")
+        if city.lower() == "exit":
+            print("👋 Goodbye!")
             break
-        result = get_weather(city)
-        display_weather(result)
-        
+        get_weather(city)
