@@ -1,33 +1,25 @@
 import requests
 
-API_KEY = "c53258fb06d69c36940ea03a59b401ee"
-BASE_URL = "http://api.openweathermap.org/data/2.5/weather"
-
 def get_weather(city):
-    params = {
-        "q": city,
-        "appid": API_KEY,
-        "units": "metric"
-    }
-    response = requests.get(BASE_URL, params=params)
-
-    if response.status_code == 200:
+    url = f"http://wttr.in/{city}?format=j1"
+    try:
+        response = requests.get(url)
         data = response.json()
+
+        current = data['current_condition'][0]
         weather = {
-            "City": data["name"],
-            "Country": data["sys"]["country"],
-            "Temperature": f"{data['main']['temp']} °C",
-            "Feels Like": f"{data['main']['feels_like']} °C",
-            "Weather": data["weather"][0]["description"].title(),
-            "Humidity": f"{data['main']['humidity']}%",
-            "Wind Speed": f"{data['wind']['speed']} m/s",
-            "Pressure": f"{data['main']['pressure']} hPa"
+            "City": city.title(),
+            "Temperature": f"{current['temp_C']} °C",
+            "Feels Like": f"{current['FeelsLikeC']} °C",
+            "Weather": current['weatherDesc'][0]['value'],
+            "Humidity": f"{current['humidity']}%",
+            "Wind Speed": f"{current['windspeedKmph']} km/h",
+            "Pressure": f"{current['pressure']} hPa"
         }
+
         return weather
-    elif response.status_code == 404:
-        return {"Error": "City not found. Please check the name."}
-    else:
-        return {"Error": f"Error {response.status_code}: {response.reason}"}
+    except Exception as e:
+        return {"Error": f"Failed to fetch weather: {str(e)}"}
 
 def display_weather(weather):
     if "Error" in weather:
@@ -46,4 +38,3 @@ if __name__ == "__main__":
             break
         weather_data = get_weather(city)
         display_weather(weather_data)
-      
